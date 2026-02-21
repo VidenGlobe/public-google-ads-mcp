@@ -1,10 +1,10 @@
 # Google Ads MCP Server
 
-An MCP (Model Context Protocol) server that gives Claude read-only access to Google Ads account data. Ships with realistic mock data for immediate testing — no API credentials required.
+An MCP (Model Context Protocol) server that gives Claude/Copilot read-only access to Google Ads account data. Ships with realistic mock data for immediate testing — no API credentials required.
 
 ## What it does
 
-Exposes 6 tools to Claude:
+Exposes 6 tools:
 
 | Tool | Description |
 |------|-------------|
@@ -15,18 +15,96 @@ Exposes 6 tools to Claude:
 | `get_performance_report` | Daily metrics over N days (trend analysis) |
 | `get_search_terms` | Search term report with wasted spend flagging |
 
-## Quick Start (Mock Data)
+---
+
+## Quick Start — Install Dependencies
 
 ```bash
-# Install dependencies
-cd google-ads-mcp
+cd /home/rustam/projecs/videnglobe/google-ads-mcp
 uv sync
-
-# Test it works
-uv run google-ads-mcp
 ```
 
-## Connect to Claude Desktop
+---
+
+## VS Code + GitHub Copilot (Step-by-Step)
+
+### Step 1: Verify the MCP config file exists
+
+The file `.vscode/mcp.json` in this project already contains the server config:
+
+```json
+{
+  "servers": {
+    "google-ads": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/rustam/projecs/videnglobe/google-ads-mcp",
+        "run",
+        "google-ads-mcp"
+      ]
+    }
+  },
+  "inputs": []
+}
+```
+
+### Step 2: Enable MCP support in VS Code settings
+
+Open VS Code Settings (`Ctrl+,`) and make sure this setting is enabled:
+
+```
+Chat > MCP: Enabled  →  ✅ checked
+```
+
+Or add to your `settings.json`:
+```json
+{
+  "chat.mcp.enabled": true
+}
+```
+
+### Step 3: Start the MCP server in VS Code
+
+1. Open the **Command Palette** (`Ctrl+Shift+P`)
+2. Type **`MCP: List Servers`** and press Enter
+3. You should see **`google-ads`** in the list
+4. If it shows as **stopped**, click on it and select **"Start Server"**
+
+Alternatively:
+1. Open the **Command Palette** (`Ctrl+Shift+P`)
+2. Type **`MCP: Start Server`** and press Enter
+3. Select **`google-ads`** from the dropdown
+
+### Step 4: Verify it's running
+
+1. Open **Copilot Chat** (`Ctrl+Alt+I` or click the Copilot icon in the sidebar)
+2. Switch to **Agent mode** (click the dropdown at the top of the chat panel — switch from "Ask" or "Edit" to **"Agent"**)
+3. You should see a **🔧 tools icon** in the chat input area — click it to see the 6 Google Ads tools listed
+4. If you don't see the tools icon, the server may not be started — go back to Step 3
+
+### Step 5: Test it
+
+In Copilot Chat (Agent mode), type:
+
+> **Show me all my campaigns and their performance**
+
+Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow"** and you'll see the mock data.
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Server not listed in `MCP: List Servers` | Make sure you have `.vscode/mcp.json` in the workspace root and the workspace is open in VS Code |
+| Server fails to start | Run `cd /home/rustam/projecs/videnglobe/google-ads-mcp && uv run google-ads-mcp` in terminal to check for errors |
+| No tools icon in Copilot Chat | Make sure you're in **Agent mode** (not "Ask" or "Edit" mode) |
+| `uv` not found | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` then restart VS Code |
+| Tools listed but not working | Click "Allow" when Copilot asks for permission to use the tool |
+
+---
+
+## Claude Desktop
 
 Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 
@@ -35,7 +113,7 @@ Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Appli
   "mcpServers": {
     "google-ads": {
       "command": "uv",
-      "args": ["--directory", "/absolute/path/to/google-ads-mcp", "run", "google-ads-mcp"]
+      "args": ["--directory", "/home/rustam/projecs/videnglobe/google-ads-mcp", "run", "google-ads-mcp"]
     }
   }
 }
@@ -43,22 +121,7 @@ Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Appli
 
 Restart Claude Desktop. You'll see the tools icon (🔧) appear.
 
-## Connect to VS Code (GitHub Copilot)
-
-Add to your VS Code `settings.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "google-ads": {
-        "command": "uv",
-        "args": ["--directory", "/absolute/path/to/google-ads-mcp", "run", "google-ads-mcp"]
-      }
-    }
-  }
-}
-```
+---
 
 ## Use with Live Google Ads Data
 
@@ -71,20 +134,27 @@ cp .env.example .env
 # Edit .env with your credentials
 ```
 
+---
+
 ## Example Prompts
 
-Once connected, try these in Claude:
+Once connected, try these in Copilot Chat (Agent mode) or Claude:
 
 - *"Show me all my campaigns and their performance"*
 - *"Run a CPA diagnostic on my Google Ads data for the last 14 days vs. the 14 days before that"*
 - *"Find wasted spend in my search terms"*
 - *"Which keywords have quality scores below 5?"*
 - *"Show me daily performance trends for campaign 1002"*
+- *"Get search terms for campaign 1002 and flag any with zero conversions"*
+
+---
 
 ## Project Structure
 
 ```
 google-ads-mcp/
+├── .vscode/
+│   └── mcp.json           # VS Code MCP server config (auto-detected)
 ├── pyproject.toml
 ├── .env.example
 ├── README.md
