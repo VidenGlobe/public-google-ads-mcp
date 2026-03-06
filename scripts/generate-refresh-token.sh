@@ -12,4 +12,4 @@ if ! command -v uv &>/dev/null; then
 fi
 
 cd "$REPO_ROOT"
-uv run python scripts/get_refresh_token.py "$@"
+uv run scripts/get_refresh_token.py "$@"

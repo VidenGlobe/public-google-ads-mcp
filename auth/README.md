@@ -7,7 +7,7 @@ Generates a refresh token for the Google Ads API using OAuth2.
 Make sure `.env` has `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`, then run:
 
 ```bash
-uv run python scripts/get_refresh_token.py
+uv run scripts/get_refresh_token.py
 ```
 
 The script will:
