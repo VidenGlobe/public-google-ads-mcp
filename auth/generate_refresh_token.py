@@ -22,6 +22,7 @@ import os
 import re
 import socket
 import sys
+import webbrowser
 from urllib.parse import unquote
 
 # If using Web flow, the redirect URL must match exactly what’s configured in GCP for
@@ -35,7 +36,35 @@ _PORT = 8080
 _REDIRECT_URI = f"http://{_SERVER}:{_PORT}"
 
 
-def main(client_secrets_path: str, scopes: list[str]) -> None:
+def update_env_file(env_path: str, key: str, value: str) -> None:
+    """Updates or adds a key=value pair in a .env file."""
+    lines = []
+    found = False
+    pattern = re.compile(r"^\s*" + re.escape(key) + r"\s*=")
+
+    if os.path.exists(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        if pattern.match(line):
+            lines[i] = f"{key}={value}\n"
+            found = True
+            break
+
+    if not found:
+        lines.append(f"{key}={value}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def main(
+    client_secrets_path: str,
+    scopes: list[str],
+    env_file: str | None = None,
+    no_browser: bool = False,
+) -> None:
     """The main method, starts a basic server and initializes an auth request.
 
     Args:
@@ -43,6 +72,7 @@ def main(client_secrets_path: str, scopes: list[str]) -> None:
           located on the machine running this example.
         scopes: a list of API scopes to include in the auth request, see:
             https://developers.google.com/identity/protocols/oauth2/scopes
+        env_file: optional path to a .env file to save the refresh token into.
     """
     flow = Flow.from_client_secrets_file(client_secrets_path, scopes=scopes)
     flow.redirect_uri = _REDIRECT_URI
@@ -58,12 +88,13 @@ def main(client_secrets_path: str, scopes: list[str]) -> None:
         include_granted_scopes="true",
     )
 
-    # Prints the authorization URL so you can paste into your browser. In a
-    # typical web application you would redirect the user to this URL, and they
-    # would be redirected back to "redirect_url" provided earlier after
-    # granting permission.
-    print("Paste this URL into your browser: ")
+    print("Paste this URL into your browser: " if no_browser else "Opening browser for Google authorization...")
     print(authorization_url)
+    if not no_browser:
+        try:
+            webbrowser.open(authorization_url)
+        except Exception:
+            print("\nCould not open browser automatically. Paste the URL above into your browser.")
     print(f"\nWaiting for authorization and callback to: {_REDIRECT_URI}")
 
     # Retrieves an authorization code by opening a socket to receive the
@@ -74,12 +105,21 @@ def main(client_secrets_path: str, scopes: list[str]) -> None:
     flow.fetch_token(code=code)
     refresh_token = flow.credentials.refresh_token
 
+    if not refresh_token:
+        print("\nError: no refresh token was returned by Google.")
+        sys.exit(1)
+
     print(f"\nYour refresh token is: {refresh_token}\n")
-    print(
-        "Add your refresh token to your client library configuration as "
-        "described here: "
-        "https://developers.google.com/google-ads/api/docs/client-libs/python/configuration"
-    )
+
+    if env_file:
+        update_env_file(env_file, "GOOGLE_ADS_REFRESH_TOKEN", refresh_token)
+        print(f"Saved refresh token to {env_file}")
+    else:
+        print(
+            "Add your refresh token to your client library configuration as "
+            "described here: "
+            "https://developers.google.com/google-ads/api/docs/client-libs/python/configuration"
+        )
 
 
 def get_authorization_code(passthrough_val: str) -> str:
@@ -92,21 +132,33 @@ def get_authorization_code(passthrough_val: str) -> str:
     Returns:
         a str access token from the Google Auth service.
     """
-    # Open a socket at _SERVER:_PORT and listen for a request
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((_SERVER, _PORT))
     sock.listen(1)
-    connection, address = sock.accept()
-    data = connection.recv(1024)
-    # Parse the raw request to retrieve the URL query parameters.
+    # Use a timeout so Ctrl+C works on Windows (blocking accept ignores it).
+    sock.settimeout(1.0)
+
+    connection = None
+    try:
+        while True:
+            try:
+                connection, _ = sock.accept()
+                break
+            except socket.timeout:
+                continue
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        sys.exit(1)
+    finally:
+        sock.close()
+
+    data = connection.recv(4096)
     params = parse_raw_query_params(data)
     message = ""
 
     try:
         if not params.get("code"):
-            # If no code is present in the query params then there will be an
-            # error message with more details.
             error = params.get("error")
             message = f"Failed to retrieve authorization code. Error: {error}"
             raise ValueError(message)
@@ -119,8 +171,10 @@ def get_authorization_code(passthrough_val: str) -> str:
         print(error)
         sys.exit(1)
     finally:
-        response = f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<b>{message}</b><p>Please check the console output.</p>\n"
-
+        response = (
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n"
+            f"<b>{message}</b><p>Please check the console output.</p>\n"
+        )
         connection.sendall(response.encode())
         connection.close()
 
@@ -186,6 +240,18 @@ if __name__ == "__main__":
         nargs="+",
         help="Additional scopes to apply when generating the refresh token.",
     )
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        type=str,
+        help="Path to a .env file. If provided, the refresh token is saved there automatically.",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        default=False,
+        help="Do not open the browser automatically. Print the URL instead.",
+    )
     args = parser.parse_args()
 
     configured_scopes = [_SCOPE]
@@ -193,4 +259,9 @@ if __name__ == "__main__":
     if args.additional_scopes:
         configured_scopes.extend(args.additional_scopes)
 
-    main(args.client_secrets_path, configured_scopes)
+    main(
+        args.client_secrets_path,
+        configured_scopes,
+        env_file=args.env_file,
+        no_browser=args.no_browser,
+    )

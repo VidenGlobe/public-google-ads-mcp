@@ -25,28 +25,61 @@ function Refresh-Path {
     $env:Path = $combined
 }
 
-function Install-WithWinget {
+function Try-InstallWithWinget {
     param(
         [string]$PackageId,
         [string]$DisplayName
     )
 
     if (-not (Test-CommandInstalled "winget")) {
-        throw "winget is not available. Install $DisplayName manually and run this script again."
+        return $false
     }
 
     Write-Host "Installing $DisplayName with winget..."
     & winget install --id $PackageId -e --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -ne 0) {
-        throw "winget failed while installing $DisplayName."
+        Write-Warning "winget failed while installing $DisplayName. Trying fallback installer."
+        return $false
+    }
+
+    return $true
+}
+
+function Install-GitWithDirectDownload {
+    Write-Host "Installing Git with direct download fallback..."
+    $ProgressPreference = "SilentlyContinue"
+    $apiUrl = "https://api.github.com/repos/git-for-windows/git/releases/latest"
+    $release = Invoke-RestMethod -Uri $apiUrl
+    $asset = $release.assets | Where-Object { $_.name -match '64-bit\.exe$' } | Select-Object -First 1
+    if ($null -eq $asset) {
+        throw "Failed to find the latest Git for Windows 64-bit installer."
+    }
+    $installerPath = Join-Path $env:TEMP "GitInstall.exe"
+    Invoke-RestMethod -Uri $asset.browser_download_url -OutFile $installerPath
+    try {
+        $process = Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT", "/NORESTART", "/NOCANCEL" -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Git installer exited with code $($process.ExitCode)."
+        }
+    }
+    finally {
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-UvWithOfficialScript {
+    Write-Host "Installing uv with the official installer..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    if ($LASTEXITCODE -ne 0) {
+        throw "uv installer failed."
     }
 }
 
 function Ensure-Command {
     param(
         [string]$Name,
-        [string]$PackageId,
-        [string]$DisplayName
+        [string]$DisplayName,
+        [scriptblock]$InstallAction
     )
 
     if (Test-CommandInstalled $Name) {
@@ -58,7 +91,7 @@ function Ensure-Command {
         throw "$DisplayName is not installed. Re-run without -SkipToolInstall or install it manually."
     }
 
-    Install-WithWinget -PackageId $PackageId -DisplayName $DisplayName
+    & $InstallAction
     Refresh-Path
 
     if (-not (Test-CommandInstalled $Name)) {
@@ -82,8 +115,16 @@ $ClaudeDir = Join-Path $env:APPDATA "Claude"
 $ClaudeConfigPath = Join-Path $ClaudeDir "claude_desktop_config.json"
 
 Write-Step "Checking required tools"
-Ensure-Command -Name "git" -PackageId "Git.Git" -DisplayName "Git"
-Ensure-Command -Name "uv" -PackageId "astral-sh.uv" -DisplayName "uv"
+Ensure-Command -Name "git" -DisplayName "Git" -InstallAction {
+    if (-not (Try-InstallWithWinget -PackageId "Git.Git" -DisplayName "Git")) {
+        Install-GitWithDirectDownload
+    }
+}
+Ensure-Command -Name "uv" -DisplayName "uv" -InstallAction {
+    if (-not (Try-InstallWithWinget -PackageId "astral-sh.uv" -DisplayName "uv")) {
+        Install-UvWithOfficialScript
+    }
+}
 
 $uvCommand = Get-Command "uv" -ErrorAction Stop
 $uvPath = $uvCommand.Source

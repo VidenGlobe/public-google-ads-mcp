@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$EnvPath
+    [string]$EnvPath,
+    [switch]$NoBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,7 +81,7 @@ $clientJson = @{
     }
 } | ConvertTo-Json -Depth 5
 
-Set-Content -Path $tempSecretsPath -Value $clientJson -Encoding UTF8
+[System.IO.File]::WriteAllText($tempSecretsPath, $clientJson)
 
 Write-Host ""
 Write-Host "Temporary OAuth client file created: $tempSecretsPath" -ForegroundColor Cyan
@@ -89,7 +90,11 @@ Write-Host ""
 
 Push-Location $repoRoot
 try {
-    & $uvCommand.Source run auth/generate_refresh_token.py -c $tempSecretsPath
+    $pyArgs = @("run", "auth/generate_refresh_token.py", "-c", $tempSecretsPath, "--env-file", $EnvPath)
+    if ($NoBrowser) {
+        $pyArgs += "--no-browser"
+    }
+    & $uvCommand.Source @pyArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Refresh token generation failed."
     }

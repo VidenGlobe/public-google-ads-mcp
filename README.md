@@ -44,8 +44,8 @@ Required environment variables:
 - `GOOGLE_ADS_DEVELOPER_TOKEN` — your API developer token
 - `GOOGLE_ADS_CLIENT_ID` — OAuth2 client ID
 - `GOOGLE_ADS_CLIENT_SECRET` — OAuth2 client secret
-- `GOOGLE_ADS_REFRESH_TOKEN` — OAuth2 refresh token (use `auth/generate_refresh_token.py` to generate)
 - `GOOGLE_ADS_LOGIN_CUSTOMER_ID` — your MCC/manager account ID (no dashes)
+- `GOOGLE_ADS_REFRESH_TOKEN` — OAuth2 refresh token (use `auth/generate_refresh_token.py` to generate)
 
 The target `customer_id` is **not** in `.env` — it's passed per request by the agent.
 
@@ -162,14 +162,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.
 ```
 
 The script installs missing tools, creates `.env`, runs `uv sync`, and updates `claude_desktop_config.json` automatically.
-
-If the repo is not on the machine yet, use this instead:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-public-google-ads-mcp.ps1
-```
-
-That script clones or pulls `https://github.com/VidenGlobe/public-google-ads-mcp` into `$HOME\google-ads-mcp`, then runs the Windows Claude Desktop setup.
 
 ### Step 1: Install Git and uv
 
