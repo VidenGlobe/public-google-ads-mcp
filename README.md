@@ -53,23 +53,19 @@ The target `customer_id` is **not** in `.env` — it's passed per request by the
 
 In the intended setup flow, an admin gives the user all credentials except `GOOGLE_ADS_REFRESH_TOKEN`.
 
-If you do not have `GOOGLE_ADS_REFRESH_TOKEN` yet, run:
+If you do not have `GOOGLE_ADS_REFRESH_TOKEN` yet, run one command:
+
+```bash
+uv run scripts/get_refresh_token.py
+```
+
+Or on Windows via PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
 ```
 
-That script reads `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` from `.env`, starts the browser auth flow, and prints the refresh token for the user to paste back into `.env`.
-
-This assumes the OAuth app was already prepared by an admin.
-
-If you want the low-level helper directly, run:
-
-```bash
-uv run auth/generate_refresh_token.py -c client_secret.json
-```
-
-See [auth/README.md](/home/rustam/projecs/videnglobe/google-ads-mcp/auth/README.md) for the full flow.
+The script reads `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` from `.env`, opens the Google login page in your browser, and **automatically saves** the refresh token back into `.env`. No manual copying needed.
 
 ---
 
