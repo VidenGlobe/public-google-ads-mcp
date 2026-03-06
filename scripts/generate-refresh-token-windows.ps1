@@ -26,10 +26,6 @@ if (-not [string]::IsNullOrWhiteSpace($EnvPath)) {
     $scriptArgs += $EnvPath
 }
 
-$env:PYTHONUNBUFFERED = "1"
-
-Write-Host "Starting refresh token generation..." -ForegroundColor Cyan
-
 Push-Location $repoRoot
 try {
     & $uvCommand.Source @scriptArgs
