@@ -1,9 +1,22 @@
 [CmdletBinding()]
 param(
-    [string]$EnvPath = (Join-Path (Split-Path -Parent $PSScriptRoot) ".env")
+    [string]$EnvPath
 )
 
 $ErrorActionPreference = "Stop"
+
+$scriptRoot = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $PSScriptRoot
+}
+else {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+$repoRoot = Split-Path -Parent $scriptRoot
+
+if ([string]::IsNullOrWhiteSpace($EnvPath)) {
+    $EnvPath = Join-Path $repoRoot ".env"
+}
 
 function Get-DotEnvValue {
     param(
@@ -40,7 +53,6 @@ if (-not (Test-Path $EnvPath)) {
     throw ".env file not found: $EnvPath"
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 $clientId = Get-DotEnvValue -FilePath $EnvPath -Key "GOOGLE_ADS_CLIENT_ID"
 $clientSecret = Get-DotEnvValue -FilePath $EnvPath -Key "GOOGLE_ADS_CLIENT_SECRET"
 
