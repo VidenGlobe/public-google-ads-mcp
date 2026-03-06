@@ -6,3 +6,8 @@ build/
 dist/
 *.egg-info/
 marketing-skills/
+
+.env*
+.flaskenv*
+!.env.project
+!.env.vault

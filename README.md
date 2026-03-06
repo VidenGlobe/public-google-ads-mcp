@@ -1,19 +1,23 @@
 # Google Ads MCP Server
 
-An MCP (Model Context Protocol) server that gives Claude/Copilot read-only access to Google Ads account data. Ships with realistic mock data for immediate testing — no API credentials required.
+An MCP (Model Context Protocol) server that gives Claude/Copilot read-only access to Google Ads account data. Supports querying any customer account by passing the customer ID per request.
 
 ## What it does
 
-Exposes 6 tools:
+Exposes 10 tools — every tool takes a `customer_id` parameter so you can query any account:
 
 | Tool | Description |
 |------|-------------|
-| `get_account_info` | Account ID and name |
 | `get_campaigns` | All campaigns with 30-day performance metrics |
 | `get_ad_groups` | Ad groups for a campaign |
 | `get_keywords` | Keywords with quality scores and match types |
 | `get_performance_report` | Daily metrics over N days (trend analysis) |
-| `get_search_terms` | Search term report with wasted spend flagging |
+| `get_search_terms` | Search term report (wasted spend, negative keyword opportunities) |
+| `get_geo_performance` | Geographic breakdown (country, region, city) |
+| `get_device_performance` | Device split (mobile, desktop, tablet) |
+| `get_ad_performance` | Ad creative performance (headlines, descriptions, CTR) |
+| `get_age_gender_performance` | Demographic breakdown (age range + gender) |
+| `get_audience_performance` | Audience segment performance (in-market, affinity, custom) |
 
 ---
 
@@ -23,6 +27,27 @@ Exposes 6 tools:
 cd /home/rustam/projecs/videnglobe/google-ads-mcp
 uv sync
 ```
+
+---
+
+## Setup — Google Ads API Credentials
+
+1. Copy `.env.example` to `.env`
+2. Fill in your Google Ads API credentials ([setup guide](https://developers.google.com/google-ads/api/docs/first-call/overview))
+
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+Required environment variables:
+- `GOOGLE_ADS_DEVELOPER_TOKEN` — your API developer token
+- `GOOGLE_ADS_CLIENT_ID` — OAuth2 client ID
+- `GOOGLE_ADS_CLIENT_SECRET` — OAuth2 client secret
+- `GOOGLE_ADS_REFRESH_TOKEN` — OAuth2 refresh token (use `auth/generate_refresh_token.py` to generate)
+- `GOOGLE_ADS_LOGIN_CUSTOMER_ID` — your MCC/manager account ID (no dashes)
+
+The target `customer_id` is **not** in `.env` — it's passed per request by the agent.
 
 ---
 
@@ -81,16 +106,16 @@ Alternatively:
 
 1. Open **Copilot Chat** (`Ctrl+Alt+I` or click the Copilot icon in the sidebar)
 2. Switch to **Agent mode** (click the dropdown at the top of the chat panel — switch from "Ask" or "Edit" to **"Agent"**)
-3. You should see a **🔧 tools icon** in the chat input area — click it to see the 6 Google Ads tools listed
+3. You should see a **🔧 tools icon** in the chat input area — click it to see the 10 Google Ads tools listed
 4. If you don't see the tools icon, the server may not be started — go back to Step 3
 
 ### Step 5: Test it
 
 In Copilot Chat (Agent mode), type:
 
-> **Show me all my campaigns and their performance**
+> **Show me all campaigns for customer 1234567890**
 
-Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow"** and you'll see the mock data.
+Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow"** and you'll see live data from the Google Ads API.
 
 ### Troubleshooting
 
@@ -104,11 +129,66 @@ Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow
 
 ---
 
-## Claude Desktop on Windows (via WSL — Recommended)
+## Claude Desktop on Windows (native)
 
-Since this project lives in WSL, Claude Desktop on Windows needs to call into WSL to run the server.
+You do not need WSL for this project. Claude Desktop can run the server directly on Windows.
 
-### Step 1: Open the Claude Desktop config file
+Fastest option if the repo is already on the machine:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
+```
+
+The script installs missing tools, creates `.env`, runs `uv sync`, and updates `claude_desktop_config.json` automatically.
+
+If the repo is not on the machine yet, use this instead:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-public-google-ads-mcp.ps1
+```
+
+That script clones or pulls `https://github.com/VidenGlobe/public-google-ads-mcp` into `$HOME\google-ads-mcp`, then runs the Windows Claude Desktop setup.
+
+### Step 1: Install Git and uv
+
+Open `PowerShell` and run:
+
+```powershell
+winget install --id Git.Git -e
+winget install --id astral-sh.uv -e
+```
+
+Then restart your terminal.
+
+If `winget` is not available on the machine, install Git from `https://git-scm.com/download/win` and install uv from `https://docs.astral.sh/uv/getting-started/installation/`.
+
+### Step 2: Clone the repo and install dependencies
+
+```powershell
+cd $HOME
+git clone https://github.com/VidenGlobe/public-google-ads-mcp google-ads-mcp
+cd $HOME\google-ads-mcp
+Copy-Item .env.example .env
+uv sync
+```
+
+Edit `.env` and fill in your Google Ads API credentials.
+
+### Step 3: Find the full path to `uv`
+
+Run:
+
+```powershell
+where.exe uv
+```
+
+Copy the first result. It will usually look like:
+
+```text
+C:\Users\<YourName>\AppData\Local\Microsoft\WinGet\Links\uv.exe
+```
+
+### Step 4: Open the Claude Desktop config file
 
 Press `Win+R`, paste this path, and press Enter:
 
@@ -118,7 +198,7 @@ Press `Win+R`, paste this path, and press Enter:
 
 If the file doesn't exist, create it. If the `Claude` folder doesn't exist, create it at `C:\Users\<YourName>\AppData\Roaming\Claude\`.
 
-### Step 2: Add the MCP server config
+### Step 5: Add the MCP server config
 
 Paste this into `claude_desktop_config.json`:
 
@@ -126,40 +206,41 @@ Paste this into `claude_desktop_config.json`:
 {
   "mcpServers": {
     "google-ads": {
-      "command": "wsl.exe",
+      "command": "C:/Users/<YourName>/AppData/Local/Microsoft/WinGet/Links/uv.exe",
       "args": [
-        "--distribution", "Ubuntu",
-        "--exec",
-        "/home/rustam/.local/bin/uv",
-        "--directory", "/home/rustam/projecs/videnglobe/google-ads-mcp",
-        "run", "google-ads-mcp"
+        "--directory",
+        "C:/Users/<YourName>/google-ads-mcp",
+        "run",
+        "google-ads-mcp"
       ]
     }
   }
 }
 ```
 
-> **Note:** Replace `Ubuntu` with your WSL distro name if different. Run `wsl -l -v` in PowerShell to check.
+Replace:
 
-### Step 3: Restart Claude Desktop
+- `C:/Users/<YourName>/AppData/Local/Microsoft/WinGet/Links/uv.exe` with the exact result from `where.exe uv`
+- `C:/Users/<YourName>/google-ads-mcp` with the folder where you cloned this repo
+
+### Step 6: Restart Claude Desktop
 
 Fully quit Claude Desktop (system tray → right-click → Quit), then reopen it.
 
-### Step 4: Verify
+### Step 7: Verify
 
-You should see a 🔧 (hammer) icon in the chat input area. Click it to see the 6 Google Ads tools. Try:
+You should see a tools icon in the chat input area. Click it to see the Google Ads tools. Try:
 
-> **Show me all my campaigns and their performance**
+> **Show me all campaigns for customer 1234567890**
 
-### Troubleshooting (Windows + WSL)
+### Troubleshooting (Windows)
 
 | Problem | Solution |
 |---------|----------|
+| `winget` not found | Install Git from `https://git-scm.com/download/win` and uv from `https://docs.astral.sh/uv/getting-started/installation/` |
 | Tools icon doesn't appear | Fully quit and reopen Claude Desktop (not just close the window) |
-| `wsl.exe` not found | Make sure WSL is installed: run `wsl --status` in PowerShell |
-| Wrong distro | Run `wsl -l -v` in PowerShell and use the correct name in `--distribution` |
-| `uv` not found in WSL | Use full path `/home/rustam/.local/bin/uv` (already set in the config above) |
-| Server errors | Test manually: open WSL terminal and run `cd /home/rustam/projecs/videnglobe/google-ads-mcp && uv run google-ads-mcp` |
+| `uv` not found | Run `where.exe uv` and use the exact full path in `claude_desktop_config.json` |
+| Server errors | Test manually: open PowerShell and run `cd $HOME\google-ads-mcp` then `uv run google-ads-mcp` |
 | Config file location | Windows: `%APPDATA%\Claude\claude_desktop_config.json` → typically `C:\Users\<YourName>\AppData\Roaming\Claude\` |
 
 ---
@@ -183,29 +264,18 @@ Restart Claude Desktop. You'll see the tools icon (🔧) appear.
 
 ---
 
-## Use with Live Google Ads Data
-
-1. Copy `.env.example` to `.env`
-2. Fill in your Google Ads API credentials ([setup guide](https://developers.google.com/google-ads/api/docs/first-call/overview))
-3. Set `GOOGLE_ADS_USE_MOCK=false`
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
----
-
 ## Example Prompts
 
 Once connected, try these in Copilot Chat (Agent mode) or Claude:
 
-- *"Show me all my campaigns and their performance"*
-- *"Run a CPA diagnostic on my Google Ads data for the last 14 days vs. the 14 days before that"*
-- *"Find wasted spend in my search terms"*
-- *"Which keywords have quality scores below 5?"*
-- *"Show me daily performance trends for campaign 1002"*
-- *"Get search terms for campaign 1002 and flag any with zero conversions"*
+- *"Show me all campaigns for customer 1234567890"*
+- *"Run a CPA diagnostic on customer 1234567890 for the last 30 days"*
+- *"Find wasted spend in search terms for customer 1234567890"*
+- *"Which keywords have quality scores below 5 for customer 1234567890?"*
+- *"Show me geographic performance for customer 1234567890"*
+- *"Compare device performance across campaigns for customer 1234567890"*
+- *"Show me demographic breakdown (age + gender) for customer 1234567890"*
+- *"What audiences are performing best for customer 1234567890?"*
 
 ---
 
@@ -215,11 +285,12 @@ Once connected, try these in Copilot Chat (Agent mode) or Claude:
 google-ads-mcp/
 ├── .vscode/
 │   └── mcp.json           # VS Code MCP server config (auto-detected)
+├── auth/
+│   └── generate_refresh_token.py  # OAuth2 token generation utility
 ├── pyproject.toml
 ├── .env.example
 ├── README.md
 └── src/google_ads_mcp/
     ├── __init__.py
-    ├── server.py          # MCP server with 6 tools
-    └── mock_data.py       # Realistic test data
+    └── server.py          # MCP server with 10 tools
 ```

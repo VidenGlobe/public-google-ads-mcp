@@ -8,30 +8,16 @@ from typing import Any
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from google_ads_mcp.mock_data import (
-    MOCK_ACCOUNT_NAME,
-    MOCK_CUSTOMER_ID,
-    get_mock_ad_groups,
-    get_mock_campaigns,
-    get_mock_keywords,
-    get_mock_performance,
-    get_mock_search_terms,
-)
-
 load_dotenv()
 
 mcp = FastMCP(
     "google-ads",
-    instructions="Google Ads MCP server. Provides read-only access to campaign, ad group, keyword, and performance data. Use these tools to analyze ad account performance, find wasted spend, diagnose CPA issues, and generate reports.",
+    instructions="Google Ads MCP server. Provides read-only access to Google Ads data: campaigns, ad groups, keywords, search terms, performance trends, geographic splits, device splits, ad creative performance, demographics, and audience segments. Every tool requires a customer_id parameter to specify which account to query.",
 )
-
-USE_MOCK = os.getenv("GOOGLE_ADS_USE_MOCK", "true").lower() == "true"
 
 
 def _get_google_ads_client():
-    """Initialize Google Ads API client (when not using mock data)."""
-    if USE_MOCK:
-        return None
+    """Initialize Google Ads API client."""
     try:
         from google.ads.googleads.client import GoogleAdsClient
 
@@ -54,31 +40,35 @@ def _fmt(data: Any) -> str:
     return json.dumps(data, indent=2, default=str)
 
 
-@mcp.tool()
-def get_account_info() -> str:
-    """Get basic account information including customer ID and account name."""
-    if USE_MOCK:
-        return _fmt({
-            "customer_id": MOCK_CUSTOMER_ID,
-            "account_name": MOCK_ACCOUNT_NAME,
-            "mode": "mock_data",
-            "note": "Using mock data for testing. Set GOOGLE_ADS_USE_MOCK=false and configure API credentials for live data.",
-        })
-    return _fmt({"customer_id": os.getenv("GOOGLE_ADS_CUSTOMER_ID"), "mode": "live"})
+class _ClientError(Exception):
+    """Raised when the Google Ads client cannot be initialized."""
 
 
-@mcp.tool()
-def get_campaigns() -> str:
-    """List all campaigns with their status, type, budget, bidding strategy, and last 30 days performance metrics (impressions, clicks, cost, conversions, CPA, ROAS)."""
-    if USE_MOCK:
-        campaigns = get_mock_campaigns()
-        return _fmt({"account": MOCK_ACCOUNT_NAME, "campaigns": campaigns})
-
+def _require_client():
+    """Get Google Ads client or raise _ClientError."""
     client = _get_google_ads_client()
     if not client:
-        return _fmt({"error": "Google Ads client not configured. Set credentials or use GOOGLE_ADS_USE_MOCK=true."})
+        raise _ClientError("Google Ads client not configured. Set API credentials in environment variables.")
+    return client
 
-    customer_id = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "")
+
+# ---------------------------------------------------------------------------
+# Existing tools (with customer_id as required parameter)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_campaigns(customer_id: str) -> str:
+    """List all campaigns with their status, type, budget, and last 30 days performance metrics (impressions, clicks, cost, conversions, CPA, ROAS).
+
+    Args:
+        customer_id: The Google Ads customer ID to query (e.g. "1234567890", no dashes)
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
     ga_service = client.get_service("GoogleAdsService")
     query = """
         SELECT
@@ -95,36 +85,38 @@ def get_campaigns() -> str:
     campaigns = []
     for batch in response:
         for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
             campaigns.append({
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
                 "status": row.campaign.status.name,
                 "type": row.campaign.advertising_channel_type.name,
+                "daily_budget": row.campaign_budget.amount_micros / 1_000_000,
                 "impressions": row.metrics.impressions,
                 "clicks": row.metrics.clicks,
-                "cost": row.metrics.cost_micros / 1_000_000,
+                "cost": cost,
                 "conversions": row.metrics.conversions,
                 "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
             })
     return _fmt({"campaigns": campaigns})
 
 
 @mcp.tool()
-def get_ad_groups(campaign_id: str) -> str:
-    """List ad groups for a specific campaign with their status and bid settings.
+def get_ad_groups(customer_id: str, campaign_id: str) -> str:
+    """List ad groups for a specific campaign with their status, bid settings, and last 30 days metrics.
 
     Args:
-        campaign_id: The campaign ID to get ad groups for (e.g. "1001")
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: The campaign ID to get ad groups for
     """
-    if USE_MOCK:
-        groups = get_mock_ad_groups(campaign_id)
-        return _fmt({"campaign_id": campaign_id, "ad_groups": groups})
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
 
-    client = _get_google_ads_client()
-    if not client:
-        return _fmt({"error": "Google Ads client not configured."})
-
-    customer_id = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "")
     ga_service = client.get_service("GoogleAdsService")
     query = f"""
         SELECT
@@ -155,22 +147,19 @@ def get_ad_groups(campaign_id: str) -> str:
 
 
 @mcp.tool()
-def get_keywords(campaign_id: str | None = None, ad_group_id: str | None = None) -> str:
+def get_keywords(customer_id: str, campaign_id: str | None = None, ad_group_id: str | None = None) -> str:
     """List keywords with quality scores, match types, and bid settings. Filter by campaign or ad group.
 
     Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
         campaign_id: Optional campaign ID to filter keywords
         ad_group_id: Optional ad group ID to filter keywords
     """
-    if USE_MOCK:
-        keywords = get_mock_keywords(campaign_id, ad_group_id)
-        return _fmt({"filters": {"campaign_id": campaign_id, "ad_group_id": ad_group_id}, "keywords": keywords})
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
 
-    client = _get_google_ads_client()
-    if not client:
-        return _fmt({"error": "Google Ads client not configured."})
-
-    customer_id = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "")
     ga_service = client.get_service("GoogleAdsService")
     where_clauses = ["ad_group_criterion.type = 'KEYWORD'"]
     if campaign_id:
@@ -211,31 +200,19 @@ def get_keywords(campaign_id: str | None = None, ad_group_id: str | None = None)
 
 
 @mcp.tool()
-def get_performance_report(campaign_id: str | None = None, days: int = 30) -> str:
-    """Get daily performance metrics (impressions, clicks, cost, conversions, CPA, ROAS) over a date range. Useful for trend analysis and CPA diagnostics.
+def get_performance_report(customer_id: str, campaign_id: str | None = None, days: int = 30) -> str:
+    """Get daily performance metrics over a date range. Useful for trend analysis and CPA diagnostics.
 
     Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
         campaign_id: Optional campaign ID to filter (omit for account-level)
-        days: Number of days to look back (default 30)
+        days: Number of days to look back (default 30, valid: 7, 14, 30, 90)
     """
-    if USE_MOCK:
-        metrics = get_mock_performance(campaign_id, days)
-        return _fmt({
-            "filters": {"campaign_id": campaign_id, "days": days},
-            "daily_metrics": metrics,
-            "summary": {
-                "total_cost": round(sum(d["cost"] for d in metrics), 2),
-                "total_conversions": sum(d["conversions"] for d in metrics),
-                "total_clicks": sum(d["clicks"] for d in metrics),
-                "avg_cpa": round(sum(d["cost"] for d in metrics) / max(1, sum(d["conversions"] for d in metrics)), 2),
-            },
-        })
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
 
-    client = _get_google_ads_client()
-    if not client:
-        return _fmt({"error": "Google Ads client not configured."})
-
-    customer_id = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "")
     ga_service = client.get_service("GoogleAdsService")
     where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
     query = f"""
@@ -267,31 +244,18 @@ def get_performance_report(campaign_id: str | None = None, days: int = 30) -> st
 
 
 @mcp.tool()
-def get_search_terms(campaign_id: str | None = None) -> str:
+def get_search_terms(customer_id: str, campaign_id: str | None = None) -> str:
     """Get search term report showing actual queries that triggered ads. Essential for finding wasted spend and negative keyword opportunities.
 
     Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
         campaign_id: Optional campaign ID to filter
     """
-    if USE_MOCK:
-        terms = get_mock_search_terms(campaign_id)
-        zero_conv = [t for t in terms if t["conversions"] == 0]
-        wasted = sum(t["cost"] for t in zero_conv)
-        return _fmt({
-            "filters": {"campaign_id": campaign_id},
-            "search_terms": terms,
-            "wasted_spend_summary": {
-                "zero_conversion_terms": len(zero_conv),
-                "wasted_spend": round(wasted, 2),
-                "terms": [t["search_term"] for t in zero_conv],
-            },
-        })
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
 
-    client = _get_google_ads_client()
-    if not client:
-        return _fmt({"error": "Google Ads client not configured."})
-
-    customer_id = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "")
     ga_service = client.get_service("GoogleAdsService")
     where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
     query = f"""
@@ -323,6 +287,323 @@ def get_search_terms(campaign_id: str | None = None) -> str:
                 "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
             })
     return _fmt({"search_terms": terms})
+
+
+# ---------------------------------------------------------------------------
+# New tools: geo, device, ad creative, demographics, audience
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_geo_performance(customer_id: str, campaign_id: str | None = None) -> str:
+    """Get geographic performance breakdown by country, region, and city. Useful for identifying high/low performing locations and optimizing geo targeting.
+
+    Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: Optional campaign ID to filter results
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
+    ga_service = client.get_service("GoogleAdsService")
+    where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+    query = f"""
+        SELECT
+            geographic_view.country_criterion_id,
+            geographic_view.location_type,
+            campaign.id, campaign.name,
+            geo_target_constant.name,
+            geo_target_constant.canonical_name,
+            geo_target_constant.target_type,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM geographic_view
+        WHERE segments.date DURING LAST_30_DAYS
+          {where}
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 200
+    """
+    response = ga_service.search_stream(customer_id=customer_id, query=query)
+    geos = []
+    for batch in response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            geos.append({
+                "geo_name": row.geo_target_constant.name,
+                "canonical_name": row.geo_target_constant.canonical_name,
+                "geo_type": row.geo_target_constant.target_type,
+                "location_type": row.geographic_view.location_type.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+    return _fmt({"filters": {"campaign_id": campaign_id}, "geo_performance": geos})
+
+
+@mcp.tool()
+def get_device_performance(customer_id: str, campaign_id: str | None = None) -> str:
+    """Get performance breakdown by device type (mobile, desktop, tablet). Useful for identifying device-specific gaps and optimizing bid adjustments.
+
+    Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: Optional campaign ID to filter results
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
+    ga_service = client.get_service("GoogleAdsService")
+    where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+    query = f"""
+        SELECT
+            segments.device,
+            campaign.id, campaign.name,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM campaign
+        WHERE segments.date DURING LAST_30_DAYS
+          {where}
+        ORDER BY metrics.cost_micros DESC
+    """
+    response = ga_service.search_stream(customer_id=customer_id, query=query)
+    devices = []
+    for batch in response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            devices.append({
+                "device": row.segments.device.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+    return _fmt({"filters": {"campaign_id": campaign_id}, "device_performance": devices})
+
+
+@mcp.tool()
+def get_ad_performance(customer_id: str, campaign_id: str | None = None, ad_group_id: str | None = None) -> str:
+    """Get ad-level creative performance including headlines, descriptions, and key metrics. Useful for identifying top/bottom performing creatives.
+
+    Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: Optional campaign ID to filter results
+        ad_group_id: Optional ad group ID to filter results
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
+    ga_service = client.get_service("GoogleAdsService")
+    where_clauses = ["ad_group_ad.status != 'REMOVED'"]
+    if campaign_id:
+        where_clauses.append(f"campaign.id = {campaign_id}")
+    if ad_group_id:
+        where_clauses.append(f"ad_group.id = {ad_group_id}")
+
+    query = f"""
+        SELECT
+            ad_group_ad.ad.id,
+            ad_group_ad.ad.type,
+            ad_group_ad.ad.final_urls,
+            ad_group_ad.ad.responsive_search_ad.headlines,
+            ad_group_ad.ad.responsive_search_ad.descriptions,
+            ad_group_ad.status,
+            campaign.id, campaign.name,
+            ad_group.id, ad_group.name,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM ad_group_ad
+        WHERE {' AND '.join(where_clauses)}
+          AND segments.date DURING LAST_30_DAYS
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 100
+    """
+    response = ga_service.search_stream(customer_id=customer_id, query=query)
+    ads = []
+    for batch in response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            headlines = []
+            descriptions = []
+            try:
+                headlines = [h.text for h in row.ad_group_ad.ad.responsive_search_ad.headlines]
+                descriptions = [d.text for d in row.ad_group_ad.ad.responsive_search_ad.descriptions]
+            except AttributeError:
+                pass
+            ads.append({
+                "ad_id": str(row.ad_group_ad.ad.id),
+                "ad_type": row.ad_group_ad.ad.type_.name,
+                "status": row.ad_group_ad.status.name,
+                "headlines": headlines,
+                "descriptions": descriptions,
+                "final_urls": list(row.ad_group_ad.ad.final_urls),
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "ad_group_id": str(row.ad_group.id),
+                "ad_group_name": row.ad_group.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+    return _fmt({"filters": {"campaign_id": campaign_id, "ad_group_id": ad_group_id}, "ad_performance": ads})
+
+
+@mcp.tool()
+def get_age_gender_performance(customer_id: str, campaign_id: str | None = None) -> str:
+    """Get demographic performance breakdown by age range and gender. Useful for identifying which demographics convert best and optimizing targeting.
+
+    Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: Optional campaign ID to filter results
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
+    ga_service = client.get_service("GoogleAdsService")
+    where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+    # Age breakdown
+    age_query = f"""
+        SELECT
+            ad_group_criterion.age_range.type,
+            campaign.id, campaign.name,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM age_range_view
+        WHERE segments.date DURING LAST_30_DAYS
+          {where}
+        ORDER BY metrics.cost_micros DESC
+    """
+    age_response = ga_service.search_stream(customer_id=customer_id, query=age_query)
+    age_data = []
+    for batch in age_response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            age_data.append({
+                "age_range": row.ad_group_criterion.age_range.type_.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+
+    # Gender breakdown
+    gender_query = f"""
+        SELECT
+            ad_group_criterion.gender.type,
+            campaign.id, campaign.name,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM gender_view
+        WHERE segments.date DURING LAST_30_DAYS
+          {where}
+        ORDER BY metrics.cost_micros DESC
+    """
+    gender_response = ga_service.search_stream(customer_id=customer_id, query=gender_query)
+    gender_data = []
+    for batch in gender_response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            gender_data.append({
+                "gender": row.ad_group_criterion.gender.type_.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+
+    return _fmt({"filters": {"campaign_id": campaign_id}, "age_performance": age_data, "gender_performance": gender_data})
+
+
+@mcp.tool()
+def get_audience_performance(customer_id: str, campaign_id: str | None = None) -> str:
+    """Get audience segment performance showing how different audiences (in-market, affinity, custom) perform. Useful for identifying high-value audiences.
+
+    Args:
+        customer_id: The Google Ads customer ID (e.g. "1234567890", no dashes)
+        campaign_id: Optional campaign ID to filter results
+    """
+    try:
+        client = _require_client()
+    except _ClientError as e:
+        return _fmt({"error": str(e)})
+
+    ga_service = client.get_service("GoogleAdsService")
+    where = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+    query = f"""
+        SELECT
+            campaign_audience_view.resource_name,
+            campaign_criterion.criterion_id,
+            campaign_criterion.display_name,
+            campaign_criterion.type,
+            campaign_criterion.status,
+            campaign.id, campaign.name,
+            metrics.impressions, metrics.clicks, metrics.cost_micros,
+            metrics.conversions, metrics.conversions_value
+        FROM campaign_audience_view
+        WHERE segments.date DURING LAST_30_DAYS
+          {where}
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 100
+    """
+    response = ga_service.search_stream(customer_id=customer_id, query=query)
+    audiences = []
+    for batch in response:
+        for row in batch.results:
+            cost = row.metrics.cost_micros / 1_000_000
+            audiences.append({
+                "audience_name": row.campaign_criterion.display_name,
+                "audience_type": row.campaign_criterion.type_.name,
+                "audience_status": row.campaign_criterion.status.name,
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": cost,
+                "conversions": row.metrics.conversions,
+                "conversion_value": row.metrics.conversions_value,
+                "ctr": round(row.metrics.clicks / row.metrics.impressions * 100, 2) if row.metrics.impressions else 0,
+                "cpa": round(cost / row.metrics.conversions, 2) if row.metrics.conversions else None,
+                "roas": round(row.metrics.conversions_value / cost, 2) if cost else None,
+            })
+    return _fmt({"filters": {"campaign_id": campaign_id}, "audience_performance": audiences})
 
 
 def main():
