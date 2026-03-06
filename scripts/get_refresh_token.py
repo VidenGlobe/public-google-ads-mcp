@@ -19,10 +19,14 @@ import socket
 import sys
 import tempfile
 import webbrowser
+from functools import partial
 from pathlib import Path
 from urllib.parse import unquote
 
 from google_auth_oauthlib.flow import Flow
+
+# Force unbuffered output so messages appear immediately on Windows
+print = partial(print, flush=True)  # noqa: A001
 
 _SCOPE = "https://www.googleapis.com/auth/adwords"
 _SERVER = "127.0.0.1"
