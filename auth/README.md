@@ -2,6 +2,21 @@
 
 Generates a refresh token for the Google Ads API using OAuth2.
 
+## Recommended Windows Flow
+
+If the user already has `.env` with:
+
+- `GOOGLE_ADS_CLIENT_ID`
+- `GOOGLE_ADS_CLIENT_SECRET`
+
+run this instead of creating `client_secret.json` manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
+```
+
+That script reads the values from `.env`, creates a temporary OAuth client file, and launches the normal refresh token flow.
+
 ## Setup
 
 1. Create OAuth 2.0 credentials in [Google Cloud Console](https://console.cloud.google.com):
@@ -16,6 +31,26 @@ Generates a refresh token for the Google Ads API using OAuth2.
 
 ```bash
 uv run auth/generate_refresh_token.py -c client_secret.json
+```
+
+## Windows Quick Steps
+
+1. Put `client_secret.json` into the repo folder
+2. Open `PowerShell`
+3. Run:
+
+```powershell
+cd $HOME\google-ads-mcp
+uv run auth/generate_refresh_token.py -c .\client_secret.json
+```
+
+4. Copy the printed URL into your browser
+5. Sign in with the Google account that has access to the Google Ads account
+6. Click `Allow`
+7. Copy the printed refresh token into `.env` as:
+
+```text
+GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token-here
 ```
 
 ### Important: VSCode Users
@@ -40,5 +75,6 @@ Add the refresh token to your `.env` file or configuration.
 ## Troubleshooting
 
 - **Port in use**: `lsof -ti:8080 | xargs kill -9`
+- **Windows port check**: `netstat -ano | findstr :8080`
 - **Auth fails**: Verify redirect URI is set in Google Cloud Console
 - **Invalid client**: Check `client_secret.json` is valid

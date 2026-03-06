@@ -26,7 +26,7 @@ What the script does:
 What you still need to do yourself:
 
 - make sure Claude Desktop is installed
-- fill in your real Google Ads credentials in `.env`
+- paste the credentials you received into `.env`
 - restart Claude Desktop after the script finishes
 
 If the repo is not on the computer yet, use this script instead:
@@ -47,14 +47,59 @@ Then it runs the main Windows setup script automatically.
 
 - A Windows computer
 - Claude Desktop installed
-- A Google Ads API setup already created, or someone who can give you these 5 values:
+- A `.env` file or credentials from your admin
+- You only need to generate one value yourself: `GOOGLE_ADS_REFRESH_TOKEN`
+- Your admin should give you the other values:
   - `GOOGLE_ADS_DEVELOPER_TOKEN`
   - `GOOGLE_ADS_CLIENT_ID`
   - `GOOGLE_ADS_CLIENT_SECRET`
-  - `GOOGLE_ADS_REFRESH_TOKEN`
   - `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
 
-If you do not have the 5 Google Ads values yet, do the install first and ask your admin for them later.
+If you do not have those values yet, ask your admin first.
+
+## How to get a Google Ads refresh token
+
+If your admin already gave you a refresh token, skip this section.
+
+You only need to run one command.
+
+Open `PowerShell` in the repo folder and run:
+
+```powershell
+cd $HOME\google-ads-mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
+```
+
+What this script does:
+
+- reads `GOOGLE_ADS_CLIENT_ID` from `.env`
+- reads `GOOGLE_ADS_CLIENT_SECRET` from `.env`
+- starts the refresh token flow
+- prints a Google login URL
+
+This assumes your admin already prepared the Google OAuth app.
+
+Then:
+
+1. Copy the URL from PowerShell
+2. Paste it into your browser
+3. Sign in with the Google account that has access to the Google Ads account
+4. Click `Allow`
+
+After approval, the PowerShell window will print your refresh token.
+
+Put it into `.env` like this:
+
+```text
+GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token-here
+```
+
+### If the refresh token flow fails
+
+- Make sure you are signing in with the Google account that has Google Ads access
+- Make sure your admin gave you the correct `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`
+- If you get an OAuth or redirect error, ask your admin to check the Google OAuth app setup
+- If port `8080` is already in use, close the app using that port and run the command again
 
 ## Step 1. Open PowerShell
 
@@ -131,12 +176,35 @@ Replace the sample values with your real values for:
 - `GOOGLE_ADS_DEVELOPER_TOKEN`
 - `GOOGLE_ADS_CLIENT_ID`
 - `GOOGLE_ADS_CLIENT_SECRET`
-- `GOOGLE_ADS_REFRESH_TOKEN`
 - `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
+
+Leave `GOOGLE_ADS_REFRESH_TOKEN` empty for now if you still need to generate it.
 
 Save the file and close Notepad.
 
-## Step 6. Install the project dependencies
+## Step 6. Generate `GOOGLE_ADS_REFRESH_TOKEN`
+
+In PowerShell, run:
+
+```powershell
+cd $HOME\google-ads-mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
+```
+
+This script uses your `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` from `.env` and runs the browser auth flow for `auth/generate_refresh_token.py`.
+
+Then:
+
+1. Copy the Google login URL from PowerShell
+2. Paste it into your browser
+3. Sign in with the correct Google account
+4. Click `Allow`
+5. Copy the refresh token printed in PowerShell
+6. Open `.env` again and paste it into `GOOGLE_ADS_REFRESH_TOKEN`
+
+Save `.env` again after you paste the refresh token.
+
+## Step 7. Install the project dependencies
 
 In PowerShell, run:
 
@@ -147,7 +215,7 @@ uv sync
 
 Wait until it finishes.
 
-## Step 7. Test that the server starts
+## Step 8. Test that the server starts
 
 In PowerShell, run:
 
@@ -162,7 +230,7 @@ Press `Ctrl+C` to stop it after the test.
 
 If you see an error, fix that first before connecting Claude Desktop.
 
-## Step 8. Find your `uv` path
+## Step 9. Find your `uv` path
 
 Claude Desktop works best when you give it the full path to `uv.exe`.
 
@@ -180,7 +248,7 @@ It will usually look like this:
 C:\Users\<YourName>\AppData\Local\Microsoft\WinGet\Links\uv.exe
 ```
 
-## Step 9. Add the server to Claude Desktop
+## Step 10. Add the server to Claude Desktop
 
 On Windows:
 
@@ -220,7 +288,7 @@ Now replace:
 
 Save the file.
 
-## Step 10. Restart Claude Desktop
+## Step 11. Restart Claude Desktop
 
 This part matters.
 
@@ -228,7 +296,7 @@ This part matters.
 2. Also close it from the system tray if it is still running
 3. Open Claude Desktop again
 
-## Step 11. Check that it worked
+## Step 12. Check that it worked
 
 Open Claude Desktop and look for the tools icon in the chat box.
 
@@ -297,6 +365,7 @@ Check:
 4. Clone the repo
 5. Create `.env`
 6. Paste Google Ads credentials into `.env`
-7. Run `uv sync`
-8. Add the server to `claude_desktop_config.json`
-9. Restart Claude Desktop
+7. Run the refresh token script and complete the browser flow
+8. Run `uv sync`
+9. Add the server to `claude_desktop_config.json`
+10. Restart Claude Desktop
