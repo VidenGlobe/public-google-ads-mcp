@@ -20,7 +20,7 @@ if ($null -eq $uvCommand) {
     exit 1
 }
 
-$scriptArgs = @("run", "scripts/get_refresh_token.py")
+$scriptArgs = @("run", "python", "scripts/get_refresh_token.py")
 if (-not [string]::IsNullOrWhiteSpace($EnvPath)) {
     $scriptArgs += "--env-file"
     $scriptArgs += $EnvPath

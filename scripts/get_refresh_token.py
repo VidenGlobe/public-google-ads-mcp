@@ -7,8 +7,8 @@ back into .env.
 Works on Windows, Linux, and macOS. No arguments needed.
 
 Usage:
-    uv run scripts/get_refresh_token.py
-    uv run scripts/get_refresh_token.py --env-file /path/to/.env
+    uv run python scripts/get_refresh_token.py
+    uv run python scripts/get_refresh_token.py --env-file /path/to/.env
 """
 
 import hashlib

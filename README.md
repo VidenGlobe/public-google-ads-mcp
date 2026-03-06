@@ -56,7 +56,7 @@ In the intended setup flow, an admin gives the user all credentials except `GOOG
 If you do not have `GOOGLE_ADS_REFRESH_TOKEN` yet, run one command:
 
 ```bash
-uv run scripts/get_refresh_token.py
+uv run python scripts/get_refresh_token.py
 ```
 
 Or on Windows via PowerShell:
