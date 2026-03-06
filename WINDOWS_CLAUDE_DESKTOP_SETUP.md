@@ -72,14 +72,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-window
 
 What this script does:
 
-- reads `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` from `.env`
-- opens the Google login page in your browser
-- waits for you to sign in and click "Allow"
-- **automatically saves** the refresh token into `.env`
-
-You do not need to copy or paste anything manually.
+- reads `GOOGLE_ADS_CLIENT_ID` from `.env`
+- reads `GOOGLE_ADS_CLIENT_SECRET` from `.env`
+- starts the refresh token flow
+- prints a Google login URL
 
 This assumes your admin already prepared the Google OAuth app.
+
+Then:
+
+1. Copy the URL from PowerShell
+2. Paste it into your browser
+3. Sign in with the Google account that has access to the Google Ads account
+4. Click `Allow`
+
+After approval, the PowerShell window will print your refresh token.
+
+Put it into `.env` like this:
+
+```text
+GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token-here
+```
 
 ### If the refresh token flow fails
 
@@ -87,7 +100,6 @@ This assumes your admin already prepared the Google OAuth app.
 - Make sure your admin gave you the correct `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`
 - If you get an OAuth or redirect error, ask your admin to check the Google OAuth app setup
 - If port `8080` is already in use, close the app using that port and run the command again
-- If the browser does not open, copy the URL from PowerShell and paste it manually
 
 ## Step 1. Open PowerShell
 
@@ -179,12 +191,18 @@ cd $HOME\google-ads-mcp
 powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
 ```
 
-A browser window will open. Then:
+This script uses your `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET` from `.env` and runs the browser auth flow for `auth/generate_refresh_token.py`.
 
-1. Sign in with the Google account that has access to Google Ads
-2. Click `Allow`
+Then:
 
-The script will **automatically save** the refresh token into `.env`. You do not need to copy anything manually.
+1. Copy the Google login URL from PowerShell
+2. Paste it into your browser
+3. Sign in with the correct Google account
+4. Click `Allow`
+5. Copy the refresh token printed in PowerShell
+6. Open `.env` again and paste it into `GOOGLE_ADS_REFRESH_TOKEN`
+
+Save `.env` again after you paste the refresh token.
 
 ## Step 7. Install the project dependencies
 

@@ -2,64 +2,79 @@
 
 Generates a refresh token for the Google Ads API using OAuth2.
 
-## Quick start (recommended)
+## Recommended Windows Flow
 
-Make sure `.env` has `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`, then run:
+If the user already has `.env` with:
 
-```bash
-uv run scripts/get_refresh_token.py
-```
+- `GOOGLE_ADS_CLIENT_ID`
+- `GOOGLE_ADS_CLIENT_SECRET`
 
-The script will:
-1. Read your client ID and secret from `.env`
-2. Open the Google login page in your browser
-3. Wait for you to sign in and click "Allow"
-4. **Automatically save** the refresh token back into `.env`
-
-On Windows via PowerShell:
+run this instead of creating `client_secret.json` manually:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
 ```
 
-On Linux/macOS:
+That script reads the values from `.env`, creates a temporary OAuth client file, and launches the normal refresh token flow.
 
-```bash
-./scripts/generate-refresh-token.sh
-```
-
-## Options
-
-```
---env-file PATH   Use a specific .env file (default: auto-detect)
---no-save         Only print the token, do not update .env
---no-open         Do not auto-open the browser
-```
-
-## Low-level script
-
-If you have a `client_secret.json` file from Google Cloud Console and want to use the raw helper:
-
-```bash
-uv run auth/generate_refresh_token.py -c client_secret.json
-```
-
-This prints the token but does not save it to `.env`.
-
-## Prerequisites (admin setup)
+## Setup
 
 1. Create OAuth 2.0 credentials in [Google Cloud Console](https://console.cloud.google.com):
    - APIs & Services > Credentials > Create Credentials > OAuth client ID
    - Choose **Web application**
    - Add `http://127.0.0.1:8080` to Authorized redirect URIs
+   - Download and save as `client_secret.json`
 
 2. Enable the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com)
 
-3. Give the user `GOOGLE_ADS_CLIENT_ID` and `GOOGLE_ADS_CLIENT_SECRET`
+## Usage
+
+```bash
+uv run auth/generate_refresh_token.py -c client_secret.json
+```
+
+## Windows Quick Steps
+
+1. Put `client_secret.json` into the repo folder
+2. Open `PowerShell`
+3. Run:
+
+```powershell
+cd $HOME\google-ads-mcp
+uv run auth/generate_refresh_token.py -c .\client_secret.json
+```
+
+4. Copy the printed URL into your browser
+5. Sign in with the Google account that has access to the Google Ads account
+6. Click `Allow`
+7. Copy the printed refresh token into `.env` as:
+
+```text
+GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token-here
+```
+
+### Important: VSCode Users
+
+When the script displays the authorization URL:
+- **Copy** the URL from the terminal
+- **Paste** it into your browser manually
+- Do NOT click the "Open in browser" suggestion in VSCode - this breaks the callback flow
+- **Use your personal Google account** (not a shared account or account without proper access)
+
+### What Happens
+
+1. Script starts a local server on `127.0.0.1:8080`
+2. You authorize the app in your browser
+3. Google redirects back to the local server
+4. Script displays your refresh token
+
+## Using the Token
+
+Add the refresh token to your `.env` file or configuration.
 
 ## Troubleshooting
 
-- **Port 8080 in use**: Close the app using that port, or check with `lsof -ti:8080` (Linux/Mac) / `netstat -ano | findstr :8080` (Windows)
-- **Empty refresh token**: Go to https://myaccount.google.com/permissions, remove the app, and try again
-- **Auth fails**: Verify `http://127.0.0.1:8080` is in the Authorized redirect URIs in Google Cloud Console
-- **VSCode terminal**: If the browser doesn't open, copy the URL manually and paste it into your browser
+- **Port in use**: `lsof -ti:8080 | xargs kill -9`
+- **Windows port check**: `netstat -ano | findstr :8080`
+- **Auth fails**: Verify redirect URI is set in Google Cloud Console
+- **Invalid client**: Check `client_secret.json` is valid
