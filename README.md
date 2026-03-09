@@ -4,20 +4,34 @@ An MCP (Model Context Protocol) server that gives Claude/Copilot read-only acces
 
 ## What it does
 
-Exposes 10 tools — every tool takes a `customer_id` parameter so you can query any account:
+Exposes 24 tools. Metric tools take a `customer_id` parameter plus optional `date_range_days` or `date_from`/`date_to` inputs, and account discovery starts with `get_accessible_accounts`.
 
 | Tool | Description |
 |------|-------------|
-| `get_campaigns` | All campaigns with 30-day performance metrics |
+| `get_accessible_accounts` | List accessible accounts under the configured MCC |
+| `get_account_info` | Account name, currency, timezone, and tagging metadata |
+| `get_campaigns` | Campaigns with configurable date-range performance metrics |
 | `get_ad_groups` | Ad groups for a campaign |
 | `get_keywords` | Keywords with quality scores and match types |
-| `get_performance_report` | Daily metrics over N days (trend analysis) |
+| `get_performance_report` | Daily metrics over a configurable date range |
 | `get_search_terms` | Search term report (wasted spend, negative keyword opportunities) |
 | `get_geo_performance` | Geographic breakdown (country, region, city) |
 | `get_device_performance` | Device split (mobile, desktop, tablet) |
 | `get_ad_performance` | Ad creative performance (headlines, descriptions, CTR) |
 | `get_age_gender_performance` | Demographic breakdown (age range + gender) |
 | `get_audience_performance` | Audience segment performance (in-market, affinity, custom) |
+| `get_hourly_performance` | Day-of-week and hour-of-day performance |
+| `get_keyword_quality_details` | Quality Score component breakdown by keyword |
+| `get_ad_extensions` | Campaign and account asset/extension performance |
+| `get_bid_strategies` | Campaign bidding strategies plus target metrics |
+| `get_conversion_actions` | Conversion action configuration and attribution settings |
+| `get_budget_pacing` | Month-to-date spend vs. budget pacing and projection |
+| `get_landing_page_performance` | Landing page URL performance and speed metrics |
+| `get_change_history` | Recent account changes for audit and anomaly review |
+| `get_campaign_labels` | Campaign and ad group label mappings |
+| `get_search_term_keyword_mapping` | Search term to triggered keyword mapping |
+| `get_negative_keywords` | Campaign and ad group negative keywords |
+| `get_impression_share_data` | Search impression share and lost-share metrics |
 
 ---
 
@@ -128,7 +142,7 @@ Alternatively:
 
 1. Open **Copilot Chat** (`Ctrl+Alt+I` or click the Copilot icon in the sidebar)
 2. Switch to **Agent mode** (click the dropdown at the top of the chat panel — switch from "Ask" or "Edit" to **"Agent"**)
-3. You should see a **🔧 tools icon** in the chat input area — click it to see the 10 Google Ads tools listed
+3. You should see a **🔧 tools icon** in the chat input area — click it to see the 24 Google Ads tools listed
 4. If you don't see the tools icon, the server may not be started — go back to Step 3
 
 ### Step 5: Test it
@@ -306,5 +320,13 @@ google-ads-mcp/
 ├── README.md
 └── src/google_ads_mcp/
     ├── __init__.py
-    └── server.py          # MCP server with 10 tools
+    ├── app.py             # FastMCP app factory and tool registration
+    ├── server.py          # Thin CLI entrypoint used by `google-ads-mcp`
+    ├── google_ads/
+    │   ├── client.py      # Google Ads client setup and query execution
+    │   └── utils.py       # Shared date/filter/format helpers
+    └── tools/
+        ├── accounts.py    # Account discovery and metadata tools
+        ├── reporting.py   # Core reporting and segmentation tools
+        └── diagnostics.py # Pacing, audit, and diagnostic tools
 ```

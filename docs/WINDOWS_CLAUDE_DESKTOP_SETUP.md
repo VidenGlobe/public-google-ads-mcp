@@ -302,25 +302,38 @@ Check:
 
 ## Fastest option
 
-If the repo is already on the computer, you can run one script instead of doing most steps manually.
+### Option A — Run directly from the internet (no clone needed)
 
-Open `PowerShell` in the repo folder and run:
+Open `PowerShell` and paste this single line:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/VidenGlobe/public-google-ads-mcp/main/scripts/setup-windows-claude-desktop.ps1 | iex"
+```
+
+This downloads and runs the script automatically. It will install `git` and `uv`, clone the repo to `$HOME\google-ads-mcp`, and configure Claude Desktop.
+
+### Option B — Run from a local clone
+
+If you have already cloned the repo, open `PowerShell` in that folder and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
 ```
 
+---
+
 What the script does:
 
-- installs `git` if missing, using `winget` first and a direct installer fallback if needed
-- installs `uv` if missing, using `winget` first and the official installer fallback if needed
+- installs `git` if missing (official installer, winget fallback)
+- installs `uv` if missing (official script, winget fallback)
+- clones the repo to `$HOME\google-ads-mcp` if not already present
 - creates `.env` from `.env.example` if needed
-- opens `.env` in Notepad if it still has placeholder values
+- opens `.env` in Notepad if it still has placeholder values, then generates `GOOGLE_ADS_REFRESH_TOKEN` automatically
 - runs `uv sync`
 - updates `claude_desktop_config.json` automatically
 
 What you still need to do yourself:
 
 - make sure Claude Desktop is installed
-- paste the credentials you received into `.env`
+- paste the credentials you received into `.env` when Notepad opens
 - restart Claude Desktop after the script finishes

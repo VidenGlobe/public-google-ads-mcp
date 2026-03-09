@@ -2,7 +2,8 @@
 param(
     [switch]$SkipToolInstall,
     [switch]$SkipSync,
-    [switch]$SkipEnvPrompt
+    [switch]$SkipEnvPrompt,
+    [string]$RepoUrl = "https://github.com/VidenGlobe/public-google-ads-mcp"
 )
 
 $ErrorActionPreference = "Stop"
@@ -108,28 +109,71 @@ if ($env:OS -ne "Windows_NT") {
     throw "This script is for Windows only."
 }
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
-$EnvExamplePath = Join-Path $RepoRoot ".env.example"
-$EnvPath = Join-Path $RepoRoot ".env"
 $ClaudeDir = Join-Path $env:APPDATA "Claude"
 $ClaudeConfigPath = Join-Path $ClaudeDir "claude_desktop_config.json"
 
-Write-Step "Checking required tools"
+# ── Step 1: Install Git ──────────────────────────────────────────────
+Write-Step "Step 1 · Checking Git"
 Ensure-Command -Name "git" -DisplayName "Git" -InstallAction {
     if (-not (Try-InstallWithWinget -PackageId "Git.Git" -DisplayName "Git")) {
         Install-GitWithDirectDownload
     }
 }
+& git --version
+
+# ── Step 2: Install uv ──────────────────────────────────────────────
+Write-Step "Step 2 · Checking uv"
 Ensure-Command -Name "uv" -DisplayName "uv" -InstallAction {
-    if (-not (Try-InstallWithWinget -PackageId "astral-sh.uv" -DisplayName "uv")) {
+    try {
         Install-UvWithOfficialScript
+    }
+    catch {
+        Write-Warning "Official uv installer failed. Trying winget fallback."
+        if (-not (Try-InstallWithWinget -PackageId "astral-sh.uv" -DisplayName "uv")) {
+            throw "Could not install uv with the official installer or winget."
+        }
+    }
+}
+& uv --version
+
+# ── Step 3: Clone repo (if needed) ──────────────────────────────────
+Write-Step "Step 3 · Locating repository"
+
+$RepoRoot = $null
+
+# If the script lives inside the repo, use that location.
+if ($null -ne $PSScriptRoot -and (Test-Path (Join-Path (Split-Path -Parent $PSScriptRoot) "pyproject.toml"))) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+    Write-Host "Using existing repo at: $RepoRoot"
+}
+else {
+    # Otherwise clone to $HOME\google-ads-mcp
+    $defaultClonePath = Join-Path $HOME "google-ads-mcp"
+    if (Test-Path (Join-Path $defaultClonePath "pyproject.toml")) {
+        $RepoRoot = $defaultClonePath
+        Write-Host "Found existing clone at: $RepoRoot"
+    }
+    else {
+        Write-Host "Cloning repository to $defaultClonePath ..."
+        & git clone $RepoUrl $defaultClonePath
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone failed."
+        }
+        $RepoRoot = $defaultClonePath
     }
 }
 
+$EnvExamplePath = Join-Path $RepoRoot ".env.example"
+$EnvPath = Join-Path $RepoRoot ".env"
+
+# ── Step 4: Find uv path ─────────────────────────────────────────────
+Write-Step "Step 4 · Resolving uv path"
 $uvCommand = Get-Command "uv" -ErrorAction Stop
 $uvPath = $uvCommand.Source
+Write-Host "uv path: $uvPath"
 
-Write-Step "Preparing .env"
+# ── Step 5: Prepare .env ─────────────────────────────────────────────
+Write-Step "Step 5 · Preparing .env"
 if (-not (Test-Path $EnvPath)) {
     Copy-Item $EnvExamplePath $EnvPath
     Write-Host "Created .env from .env.example"
@@ -143,11 +187,40 @@ $needsEnvEdit = $envContents -match "your-developer-token|your-client-id|your-cl
 
 if (-not $SkipEnvPrompt -and $needsEnvEdit) {
     Write-Host "Your .env still contains placeholder values. Notepad will open now."
+    Write-Host "Fill in: GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET" -ForegroundColor Yellow
+    Write-Host "Leave GOOGLE_ADS_REFRESH_TOKEN empty — the next step will generate it." -ForegroundColor Yellow
     Start-Process notepad.exe $EnvPath
     Read-Host "Fill in your Google Ads credentials, save the file, then press Enter here"
 }
 
-Write-Step "Installing project dependencies"
+# ── Step 6: Generate refresh token ───────────────────────────────────
+Write-Step "Step 6 · Generating GOOGLE_ADS_REFRESH_TOKEN"
+$refreshTokenScript = Join-Path $RepoRoot "scripts\generate-refresh-token-windows.ps1"
+if (Test-Path $refreshTokenScript) {
+    $envContents = Get-Content -Path $EnvPath -Raw
+    $hasRefreshToken = $envContents -match 'GOOGLE_ADS_REFRESH_TOKEN\s*=\s*[^\s]'
+    if (-not $hasRefreshToken) {
+        Write-Host "Running refresh token generation script..."
+        & powershell -ExecutionPolicy Bypass -File $refreshTokenScript -EnvPath $EnvPath
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Refresh token generation failed. You can run it manually later:"
+            Write-Host "  powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "Refresh token saved to .env" -ForegroundColor Green
+        }
+    }
+    else {
+        Write-Host "GOOGLE_ADS_REFRESH_TOKEN already set in .env — skipping."
+    }
+}
+else {
+    Write-Warning "Refresh token script not found at: $refreshTokenScript"
+    Write-Host "You will need to generate your refresh token manually later."
+}
+
+# ── Step 7: Install project dependencies ─────────────────────────────
+Write-Step "Step 7 · Installing project dependencies"
 Push-Location $RepoRoot
 try {
     if (-not $SkipSync) {
@@ -164,7 +237,8 @@ finally {
     Pop-Location
 }
 
-Write-Step "Updating Claude Desktop config"
+# ── Step 8: Update Claude Desktop config ─────────────────────────────
+Write-Step "Step 8 · Updating Claude Desktop config"
 if (-not (Test-Path $ClaudeDir)) {
     New-Item -ItemType Directory -Path $ClaudeDir | Out-Null
 }
