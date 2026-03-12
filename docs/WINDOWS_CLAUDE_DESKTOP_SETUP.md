@@ -14,6 +14,30 @@ This guide is for non-technical users. It walks you through installing the MCP s
 
 If you do not have those values yet, ask your admin first.
 
+## Fastest option
+
+### Option A — Run directly from the internet (no clone needed)
+
+Open `PowerShell` and paste this single line:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/VidenGlobe/public-google-ads-mcp/main/scripts/setup-windows-claude-desktop.ps1 | iex"
+```
+
+This downloads and runs the script automatically. It will install `git` and `uv`, clone the repo to `$HOME\google-ads-mcp`, and configure Claude Desktop.
+
+### Option B — Run from a local clone
+
+If you have already cloned the repo, open `PowerShell` in that folder and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
+```
+
+**If the automatic setup doesn't work for you, follow the step-by-step manual instructions below.**
+
+---
+
 ## Step 1. Open PowerShell
 
 Click `Start`, type `PowerShell`, then open it.
@@ -306,26 +330,6 @@ If the official installer fails, try installing uv from https://docs.astral.sh/u
 
 ```powershell
 winget install --id astral-sh.uv -e
-```
-
-## Fastest option
-
-### Option A — Run directly from the internet (no clone needed)
-
-Open `PowerShell` and paste this single line:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/VidenGlobe/public-google-ads-mcp/main/scripts/setup-windows-claude-desktop.ps1 | iex"
-```
-
-This downloads and runs the script automatically. It will install `git` and `uv`, clone the repo to `$HOME\google-ads-mcp`, and configure Claude Desktop.
-
-### Option B — Run from a local clone
-
-If you have already cloned the repo, open `PowerShell` in that folder and run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
 ```
 
 ---
