@@ -38,7 +38,7 @@ Exposes 24 tools. Metric tools take a `customer_id` parameter plus optional `dat
 ## Quick Start — Install Dependencies
 
 ```bash
-cd /home/rustam/projecs/videnglobe/google-ads-mcp
+cd google-ads-mcp
 uv sync
 ```
 
@@ -83,15 +83,21 @@ If you want the low-level helper directly, run:
 uv run auth/generate_refresh_token.py -c client_secret.json
 ```
 
-See [auth/README.md](/home/rustam/projecs/videnglobe/google-ads-mcp/auth/README.md) for the full flow.
+See [auth/README.md](auth/README.md) for the full flow.
 
 ---
 
 ## VS Code + GitHub Copilot (Step-by-Step)
 
-### Step 1: Verify the MCP config file exists
+### Step 1: Create the MCP config file
 
-The file `.vscode/mcp.json` in this project already contains the server config:
+Copy the example config:
+
+```bash
+cp .vscode/mcp.json.example .vscode/mcp.json
+```
+
+The file `.vscode/mcp.json` should contain:
 
 ```json
 {
@@ -101,7 +107,7 @@ The file `.vscode/mcp.json` in this project already contains the server config:
       "command": "uv",
       "args": [
         "--directory",
-        "/home/rustam/projecs/videnglobe/google-ads-mcp",
+        "${workspaceFolder}",
         "run",
         "google-ads-mcp"
       ]
@@ -157,8 +163,8 @@ Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow
 
 | Problem | Solution |
 |---------|----------|
-| Server not listed in `MCP: List Servers` | Make sure you have `.vscode/mcp.json` in the workspace root and the workspace is open in VS Code |
-| Server fails to start | Run `cd /home/rustam/projecs/videnglobe/google-ads-mcp && uv run google-ads-mcp` in terminal to check for errors |
+| Server not listed in `MCP: List Servers` | Make sure you have `.vscode/mcp.json` in the workspace root (copy from `.vscode/mcp.json.example`) and the workspace is open in VS Code |
+| Server fails to start | Run `cd google-ads-mcp && uv run google-ads-mcp` in terminal to check for errors |
 | No tools icon in Copilot Chat | Make sure you're in **Agent mode** (not "Ask" or "Edit" mode) |
 | `uv` not found | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` then restart VS Code |
 | Tools listed but not working | Click "Allow" when Copilot asks for permission to use the tool |
@@ -282,11 +288,13 @@ Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Appli
   "mcpServers": {
     "google-ads": {
       "command": "uv",
-      "args": ["--directory", "/home/rustam/projecs/videnglobe/google-ads-mcp", "run", "google-ads-mcp"]
+      "args": ["--directory", "/path/to/google-ads-mcp", "run", "google-ads-mcp"]
     }
   }
 }
 ```
+
+**Note**: Replace `/path/to/google-ads-mcp` with the actual path to your project directory.
 
 Restart Claude Desktop. You'll see the tools icon (🔧) appear.
 
@@ -306,27 +314,3 @@ Once connected, try these in Copilot Chat (Agent mode) or Claude:
 - *"What audiences are performing best for customer 1234567890?"*
 
 ---
-
-## Project Structure
-
-```
-google-ads-mcp/
-├── .vscode/
-│   └── mcp.json           # VS Code MCP server config (auto-detected)
-├── auth/
-│   └── generate_refresh_token.py  # OAuth2 token generation utility
-├── pyproject.toml
-├── .env.example
-├── README.md
-└── src/google_ads_mcp/
-    ├── __init__.py
-    ├── app.py             # FastMCP app factory and tool registration
-    ├── server.py          # Thin CLI entrypoint used by `google-ads-mcp`
-    ├── google_ads/
-    │   ├── client.py      # Google Ads client setup and query execution
-    │   └── utils.py       # Shared date/filter/format helpers
-    └── tools/
-        ├── accounts.py    # Account discovery and metadata tools
-        ├── reporting.py   # Core reporting and segmentation tools
-        └── diagnostics.py # Pacing, audit, and diagnostic tools
-```

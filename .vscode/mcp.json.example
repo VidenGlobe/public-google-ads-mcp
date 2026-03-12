@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "google-ads": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${workspaceFolder}",
+        "run",
+        "google-ads-mcp"
+      ]
+    }
+  },
+  "inputs": []
+}

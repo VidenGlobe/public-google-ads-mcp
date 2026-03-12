@@ -37,7 +37,10 @@ function Try-InstallWithWinget {
     }
 
     Write-Host "Installing $DisplayName with winget..."
-    & winget install --id $PackageId -e --accept-package-agreements --accept-source-agreements
+    # --source winget skips the msstore source, which can fail with SSL cert
+    # errors on some networks and cause a non-zero exit even when the package
+    # is available.
+    & winget install --id $PackageId -e --source winget --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "winget failed while installing $DisplayName. Trying fallback installer."
         return $false
@@ -112,8 +115,8 @@ if ($env:OS -ne "Windows_NT") {
 $ClaudeDir = Join-Path $env:APPDATA "Claude"
 $ClaudeConfigPath = Join-Path $ClaudeDir "claude_desktop_config.json"
 
-# ── Step 1: Install Git ──────────────────────────────────────────────
-Write-Step "Step 1 · Checking Git"
+# Step 1: Install Git
+Write-Step "Step 1 - Checking Git"
 Ensure-Command -Name "git" -DisplayName "Git" -InstallAction {
     if (-not (Try-InstallWithWinget -PackageId "Git.Git" -DisplayName "Git")) {
         Install-GitWithDirectDownload
@@ -121,8 +124,8 @@ Ensure-Command -Name "git" -DisplayName "Git" -InstallAction {
 }
 & git --version
 
-# ── Step 2: Install uv ──────────────────────────────────────────────
-Write-Step "Step 2 · Checking uv"
+# Step 2: Install uv
+Write-Step "Step 2 - Checking uv"
 Ensure-Command -Name "uv" -DisplayName "uv" -InstallAction {
     try {
         Install-UvWithOfficialScript
@@ -136,8 +139,8 @@ Ensure-Command -Name "uv" -DisplayName "uv" -InstallAction {
 }
 & uv --version
 
-# ── Step 3: Clone repo (if needed) ──────────────────────────────────
-Write-Step "Step 3 · Locating repository"
+# Step 3: Clone repo (if needed)
+Write-Step "Step 3 - Locating repository"
 
 $RepoRoot = $null
 
@@ -166,14 +169,14 @@ else {
 $EnvExamplePath = Join-Path $RepoRoot ".env.example"
 $EnvPath = Join-Path $RepoRoot ".env"
 
-# ── Step 4: Find uv path ─────────────────────────────────────────────
-Write-Step "Step 4 · Resolving uv path"
+# Step 4: Find uv path
+Write-Step "Step 4 - Resolving uv path"
 $uvCommand = Get-Command "uv" -ErrorAction Stop
 $uvPath = $uvCommand.Source
 Write-Host "uv path: $uvPath"
 
-# ── Step 5: Prepare .env ─────────────────────────────────────────────
-Write-Step "Step 5 · Preparing .env"
+# Step 5: Prepare .env
+Write-Step "Step 5 - Preparing .env"
 if (-not (Test-Path $EnvPath)) {
     Copy-Item $EnvExamplePath $EnvPath
     Write-Host "Created .env from .env.example"
@@ -188,18 +191,31 @@ $needsEnvEdit = $envContents -match "your-developer-token|your-client-id|your-cl
 if (-not $SkipEnvPrompt -and $needsEnvEdit) {
     Write-Host "Your .env still contains placeholder values. Notepad will open now."
     Write-Host "Fill in: GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET" -ForegroundColor Yellow
-    Write-Host "Leave GOOGLE_ADS_REFRESH_TOKEN empty — the next step will generate it." -ForegroundColor Yellow
+    Write-Host "Leave GOOGLE_ADS_REFRESH_TOKEN empty - the next step will generate it." -ForegroundColor Yellow
     Start-Process notepad.exe $EnvPath
     Read-Host "Fill in your Google Ads credentials, save the file, then press Enter here"
 }
 
-# ── Step 6: Generate refresh token ───────────────────────────────────
-Write-Step "Step 6 · Generating GOOGLE_ADS_REFRESH_TOKEN"
+# Step 6: Generate refresh token
+Write-Step "Step 6 - Generating GOOGLE_ADS_REFRESH_TOKEN"
 $refreshTokenScript = Join-Path $RepoRoot "scripts\generate-refresh-token-windows.ps1"
 if (Test-Path $refreshTokenScript) {
     $envContents = Get-Content -Path $EnvPath -Raw
-    $hasRefreshToken = $envContents -match 'GOOGLE_ADS_REFRESH_TOKEN\s*=\s*[^\s]'
-    if (-not $hasRefreshToken) {
+    $refreshTokenMatch = [regex]::Match($envContents, 'GOOGLE_ADS_REFRESH_TOKEN\s*=\s*(.+)')
+    $refreshTokenValue = $null
+    if ($refreshTokenMatch.Success) {
+        $refreshTokenValue = $refreshTokenMatch.Groups[1].Value.Trim()
+        if (
+            ($refreshTokenValue.StartsWith('"') -and $refreshTokenValue.EndsWith('"')) -or
+            ($refreshTokenValue.StartsWith("'") -and $refreshTokenValue.EndsWith("'"))
+        ) {
+            $refreshTokenValue = $refreshTokenValue.Substring(1, $refreshTokenValue.Length - 2)
+        }
+    }
+
+    $hasUsableRefreshToken = -not [string]::IsNullOrWhiteSpace($refreshTokenValue) -and $refreshTokenValue -ne "your-refresh-token"
+
+    if (-not $hasUsableRefreshToken) {
         Write-Host "Running refresh token generation script..."
         & powershell -ExecutionPolicy Bypass -File $refreshTokenScript -EnvPath $EnvPath
         if ($LASTEXITCODE -ne 0) {
@@ -211,7 +227,7 @@ if (Test-Path $refreshTokenScript) {
         }
     }
     else {
-        Write-Host "GOOGLE_ADS_REFRESH_TOKEN already set in .env — skipping."
+        Write-Host "GOOGLE_ADS_REFRESH_TOKEN already set in .env - skipping."
     }
 }
 else {
@@ -219,8 +235,8 @@ else {
     Write-Host "You will need to generate your refresh token manually later."
 }
 
-# ── Step 7: Install project dependencies ─────────────────────────────
-Write-Step "Step 7 · Installing project dependencies"
+# Step 7: Install project dependencies
+Write-Step "Step 7 - Installing project dependencies"
 Push-Location $RepoRoot
 try {
     if (-not $SkipSync) {
@@ -237,8 +253,8 @@ finally {
     Pop-Location
 }
 
-# ── Step 8: Update Claude Desktop config ─────────────────────────────
-Write-Step "Step 8 · Updating Claude Desktop config"
+# Step 8: Update Claude Desktop config
+Write-Step "Step 8 - Updating Claude Desktop config"
 if (-not (Test-Path $ClaudeDir)) {
     New-Item -ItemType Directory -Path $ClaudeDir | Out-Null
 }
@@ -295,3 +311,4 @@ Write-Host "Next steps:"
 Write-Host "1. If you have not filled in .env yet, open it and add your Google Ads credentials."
 Write-Host "2. Fully quit Claude Desktop and open it again."
 Write-Host "3. In Claude Desktop, look for the tools icon and test: Show me all campaigns for customer 1234567890"
+

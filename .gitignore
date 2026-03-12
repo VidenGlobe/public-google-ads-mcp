@@ -11,3 +11,6 @@ marketing-skills/
 .flaskenv*
 !.env.project
 !.env.vault
+
+# VS Code MCP config (user-specific)
+.vscode/mcp.json
