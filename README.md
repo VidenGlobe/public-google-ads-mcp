@@ -87,6 +87,172 @@ See [auth/README.md](auth/README.md) for the full flow.
 
 ---
 
+## Claude Desktop on Windows (native)
+
+You do not need WSL for this project. Claude Desktop can run the server directly on Windows.
+
+**For detailed step-by-step guide with screenshots, see [docs/WINDOWS_CLAUDE_DESKTOP_SETUP.md](docs/WINDOWS_CLAUDE_DESKTOP_SETUP.md).**
+
+### Fastest option
+
+If you have the repo cloned, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
+```
+
+Or run directly from the internet (no clone needed):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/VidenGlobe/public-google-ads-mcp/main/scripts/setup-windows-claude-desktop.ps1 | iex"
+```
+
+The script installs missing tools, creates `.env`, runs `uv sync`, and updates `claude_desktop_config.json` automatically.
+
+### Manual setup
+
+#### Step 1: Install Git and uv
+
+Open `PowerShell` and run:
+
+```powershell
+winget install --id Git.Git -e
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then restart your terminal.
+
+If `winget` is not available, install Git from `https://git-scm.com/download/win` and uv from `https://docs.astral.sh/uv/getting-started/installation/`.
+
+Alternative: install uv with winget (not recommended):
+
+```powershell
+winget install --id astral-sh.uv -e
+```
+
+#### Step 2: Clone the repo and install dependencies
+
+```powershell
+cd $HOME
+git clone https://github.com/VidenGlobe/public-google-ads-mcp google-ads-mcp
+cd $HOME\google-ads-mcp
+Copy-Item .env.example .env
+notepad .env
+```
+
+Edit `.env` and fill in your Google Ads API credentials:
+- `GOOGLE_ADS_DEVELOPER_TOKEN`
+- `GOOGLE_ADS_CLIENT_ID`
+- `GOOGLE_ADS_CLIENT_SECRET`
+- `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
+
+Leave `GOOGLE_ADS_REFRESH_TOKEN` empty for now.
+
+#### Step 3: Generate refresh token
+
+```powershell
+cd $HOME\google-ads-mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\generate-refresh-token-windows.ps1
+```
+
+Your browser will open. Sign in with your Google account and authorize. The refresh token will be saved to `.env` automatically.
+
+#### Step 4: Find the full path to `uv`
+
+Run:
+
+```powershell
+where.exe uv
+```
+
+Copy the first result. It will usually look like:
+
+```text
+C:\Users\<YourName>\AppData\Local\Microsoft\WinGet\Links\uv.exe
+OR
+C:\Users\<YourName>\.local\bin\uv.exe
+```
+
+#### Step 5: Open the Claude Desktop config file
+
+Press `Win+R`, paste this path, and press Enter:
+
+```
+%APPDATA%\Claude\claude_desktop_config.json
+```
+
+If the file doesn't exist, create it. If the `Claude` folder doesn't exist, create it at `C:\Users\<YourName>\AppData\Roaming\Claude\`.
+
+#### Step 6: Add the MCP server config
+
+Add this to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "google-ads": {
+      "command": "C:/Users/<YourName>/.local/bin/uv.exe",
+      "args": [
+        "--directory",
+        "C:/Users/<YourName>/google-ads-mcp",
+        "run",
+        "google-ads-mcp"
+      ]
+    }
+  }
+}
+```
+
+Replace:
+- `C:/Users/<YourName>/.local/bin/uv.exe` with the exact result from `where.exe uv` (use forward slashes `/`)
+- `C:/Users/<YourName>/google-ads-mcp` with the folder where you cloned this repo (use forward slashes)
+
+#### Step 7: Restart Claude Desktop
+
+Fully quit Claude Desktop (system tray → right-click → Quit), then reopen it.
+
+#### Step 8: Verify
+
+You should see a tools icon in the chat input area. Click it to see the Google Ads tools. Try:
+
+> **Show me all campaigns for customer 1234567890**
+
+### Troubleshooting (Windows)
+
+| Problem | Solution |
+|---------|----------|
+| `winget` not found | Install Git from `https://git-scm.com/download/win` and uv from `https://docs.astral.sh/uv/getting-started/installation/` (use official installer) |
+| Tools icon doesn't appear | Fully quit and reopen Claude Desktop (not just close the window) |
+| `uv` not found | Run `where.exe uv` and use the exact full path in `claude_desktop_config.json` |
+| Server errors | Test manually: open PowerShell and run `cd $HOME\google-ads-mcp` then `uv run google-ads-mcp` |
+| Config file location | Windows: `%APPDATA%\Claude\claude_desktop_config.json` → typically `C:\Users\<YourName>\AppData\Roaming\Claude\` |
+| Google Ads tools appear, but data does not load | Check `.env` credentials are correct |
+
+For detailed step-by-step guide with screenshots, see [docs/WINDOWS_CLAUDE_DESKTOP_SETUP.md](docs/WINDOWS_CLAUDE_DESKTOP_SETUP.md).
+
+---
+
+## Claude Desktop on Linux / macOS (native)
+
+Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "google-ads": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/google-ads-mcp", "run", "google-ads-mcp"]
+    }
+  }
+}
+```
+
+**Note**: Replace `/path/to/google-ads-mcp` with the actual path to your project directory.
+
+Restart Claude Desktop. You'll see the tools icon (🔧) appear.
+
+---
+
 ## VS Code + GitHub Copilot (Step-by-Step)
 
 ### Step 1: Create the MCP config file
@@ -168,135 +334,6 @@ Copilot will ask for permission to call the `get_campaigns` tool. Click **"Allow
 | No tools icon in Copilot Chat | Make sure you're in **Agent mode** (not "Ask" or "Edit" mode) |
 | `uv` not found | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` then restart VS Code |
 | Tools listed but not working | Click "Allow" when Copilot asks for permission to use the tool |
-
----
-
-## Claude Desktop on Windows (native)
-
-You do not need WSL for this project. Claude Desktop can run the server directly on Windows.
-
-Fastest option if the repo is already on the machine:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.ps1
-```
-
-The script installs missing tools, creates `.env`, runs `uv sync`, and updates `claude_desktop_config.json` automatically.
-
-### Step 1: Install Git and uv
-
-Open `PowerShell` and run:
-
-```powershell
-winget install --id Git.Git -e
-winget install --id astral-sh.uv -e
-```
-
-Then restart your terminal.
-
-If `winget` is not available on the machine, install Git from `https://git-scm.com/download/win` and install uv from `https://docs.astral.sh/uv/getting-started/installation/`.
-
-### Step 2: Clone the repo and install dependencies
-
-```powershell
-cd $HOME
-git clone https://github.com/VidenGlobe/public-google-ads-mcp google-ads-mcp
-cd $HOME\google-ads-mcp
-Copy-Item .env.example .env
-uv sync
-```
-
-Edit `.env` and fill in your Google Ads API credentials.
-
-### Step 3: Find the full path to `uv`
-
-Run:
-
-```powershell
-where.exe uv
-```
-
-Copy the first result. It will usually look like:
-
-```text
-C:\Users\<YourName>\AppData\Local\Microsoft\WinGet\Links\uv.exe
-```
-
-### Step 4: Open the Claude Desktop config file
-
-Press `Win+R`, paste this path, and press Enter:
-
-```
-%APPDATA%\Claude\claude_desktop_config.json
-```
-
-If the file doesn't exist, create it. If the `Claude` folder doesn't exist, create it at `C:\Users\<YourName>\AppData\Roaming\Claude\`.
-
-### Step 5: Add the MCP server config
-
-Paste this into `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "google-ads": {
-      "command": "C:/Users/<YourName>/AppData/Local/Microsoft/WinGet/Links/uv.exe",
-      "args": [
-        "--directory",
-        "C:/Users/<YourName>/google-ads-mcp",
-        "run",
-        "google-ads-mcp"
-      ]
-    }
-  }
-}
-```
-
-Replace:
-
-- `C:/Users/<YourName>/AppData/Local/Microsoft/WinGet/Links/uv.exe` with the exact result from `where.exe uv`
-- `C:/Users/<YourName>/google-ads-mcp` with the folder where you cloned this repo
-
-### Step 6: Restart Claude Desktop
-
-Fully quit Claude Desktop (system tray → right-click → Quit), then reopen it.
-
-### Step 7: Verify
-
-You should see a tools icon in the chat input area. Click it to see the Google Ads tools. Try:
-
-> **Show me all campaigns for customer 1234567890**
-
-### Troubleshooting (Windows)
-
-| Problem | Solution |
-|---------|----------|
-| `winget` not found | Install Git from `https://git-scm.com/download/win` and uv from `https://docs.astral.sh/uv/getting-started/installation/` |
-| Tools icon doesn't appear | Fully quit and reopen Claude Desktop (not just close the window) |
-| `uv` not found | Run `where.exe uv` and use the exact full path in `claude_desktop_config.json` |
-| Server errors | Test manually: open PowerShell and run `cd $HOME\google-ads-mcp` then `uv run google-ads-mcp` |
-| Config file location | Windows: `%APPDATA%\Claude\claude_desktop_config.json` → typically `C:\Users\<YourName>\AppData\Roaming\Claude\` |
-
----
-
-## Claude Desktop on Linux / macOS (native)
-
-Add to `~/.config/Claude/claude_desktop_config.json` (Linux) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
-
-```json
-{
-  "mcpServers": {
-    "google-ads": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/google-ads-mcp", "run", "google-ads-mcp"]
-    }
-  }
-}
-```
-
-**Note**: Replace `/path/to/google-ads-mcp` with the actual path to your project directory.
-
-Restart Claude Desktop. You'll see the tools icon (🔧) appear.
 
 ---
 

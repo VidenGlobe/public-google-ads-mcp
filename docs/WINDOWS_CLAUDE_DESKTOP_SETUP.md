@@ -68,7 +68,7 @@ Copy and paste (recommended):
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-OR (alternative):
+OR (alternative, not recommended):
 
 ```powershell
 winget install --id astral-sh.uv -e
@@ -300,6 +300,14 @@ Check:
 - `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
 - `GOOGLE_ADS_REFRESH_TOKEN`
 
+### `uv` installation issues
+
+If the official installer fails, try installing uv from https://docs.astral.sh/uv/getting-started/installation/ or use winget as a fallback:
+
+```powershell
+winget install --id astral-sh.uv -e
+```
+
 ## Fastest option
 
 ### Option A — Run directly from the internet (no clone needed)
@@ -325,7 +333,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows-claude-desktop.
 What the script does:
 
 - installs `git` if missing (official installer, winget fallback)
-- installs `uv` if missing (official script, winget fallback)
+- installs `uv` if missing (official installer, winget fallback)
 - clones the repo to `$HOME\google-ads-mcp` if not already present
 - creates `.env` from `.env.example` if needed
 - opens `.env` in Notepad if it still has placeholder values, then generates `GOOGLE_ADS_REFRESH_TOKEN` automatically
